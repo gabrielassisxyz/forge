@@ -1,0 +1,87 @@
+# Architecture
+
+forge is a thin orchestration over tools that already exist. It builds almost
+nothing new: the two genuinely new pieces are **the loop with a verifier** (step 5)
+and **the graduation gate** (step 7). Everything else composes skills you already
+run — `project-bootstrap`, `planning-with-files`, `code-review`.
+
+## The layered model
+
+Three techniques stack; they are not alternatives (a common confusion):
+
+- **Ralph loop** = the inner engine. One process, one repo, one task per iteration,
+  fresh context each turn, state on disk. Great on greenfield (~90%); the last 10%
+  is slop unless something pushes back.
+- **forge orchestration** = the steps that feed the engine (interview → bootstrap →
+  scope → plan) and gate its output (verifier, graduation). This is where the missing
+  10% is recovered.
+- **Loop-engineering discipline** = the safety rubric borrowed on top: maker≠checker,
+  attempt caps, structured state, escalation. We steal its *checklists*, not its
+  *patterns* (its patterns are maintenance loops — wrong shape for greenfield tools).
+
+## Why the harness, not the prompt, makes it usable
+
+The old `idea-to-planning` produced prototypes because its loop was ~50 words of
+prompt with hardcoded constraints and **no AGENTS.md, no CI gate, no verifier**. The
+Ralph "minimal prompt" is about the *iteration instruction* — Ralph itself demands
+rich anchor files (`AGENTS.md`, the plan). Quality lives in four backpressure layers:
+
+| Layer | Catches | Where |
+|---|---|---|
+| AGENTS.md (in the built project) | wrong conventions, wrong shape | written by `project-bootstrap`, read every iteration |
+| `bin/ci` (deterministic) | broken build, failing/absent tests, secrets | run after each task in `forge-loop` |
+| verifier agent (semantic) | placeholders, stubs, task-not-actually-done | separate invocation, default REJECT |
+| retry cap | infinite fix loops, token burn | `FORGE_MAX_RETRIES` → escalate |
+
+The verifier is the load-bearing addition. loop-engineering's #1 anti-pattern is
+"same agent implements and verifies" — confirmation bias rubber-stamps weak work. So
+the checker is a *fresh* invocation reading the diff, told to find reasons to reject.
+
+## The loop (step 5) in detail
+
+`bin/forge-loop`, per iteration:
+
+1. Count remaining `[ ]` in `task_plan.md`; zero → `##DONE##`, stop.
+2. Implementer agent does the first `[ ]` task (reads AGENTS.md + plan itself; files
+   are not re-embedded — keeps the stack small, per Ralph's context discipline).
+3. `bin/ci` if present. Fail → feed the tail back to the implementer, retry.
+4. Verifier agent → `##ACCEPT##` or `##REJECT##` + defects. Reject → feed back, retry.
+5. Accept → `git commit` the task (each task is one commit = the review surface).
+6. Guard: if no checkbox advanced, escalate rather than spin.
+7. Cap hit (`FORGE_MAX_RETRIES` per task, `FORGE_MAX_LOOPS` global) → write `STUCK.md`,
+   exit non-zero. A human picks up with full context in `.forge/` + `progress.md`.
+
+State spine = planning-with-files' three files: `task_plan.md` (plan+checkboxes),
+`findings.md` (durable decisions/discoveries), `progress.md` (trajectory log).
+
+## Decisions
+
+1. **New repo, not a fork of idea-to-planning.** The old skeleton's skills were
+   placeholders (its own `processor.py` says so) and it was welded to OpenCode+ai-jail.
+   Salvaged: the pipeline shape and the four prompt-specs. Rewritten: everything else.
+2. **Verifier is mandatory and separate.** Without it, greenfield Ralph ships stubs.
+   This is the one thing that makes output "usable" vs "prototype".
+3. **Agent-agnostic via `FORGE_AGENT_CMD`.** No hard dependency on a specific CLI; the
+   loop just needs a non-interactive agent with filesystem + tool access.
+4. **planning-with-files over planning-workflow.** The latter is a heavy human-in-the-
+   loop, multi-model-blending methodology — the opposite of autonomous. We keep its
+   *philosophy* (plan hard, planning tokens are cheap) but use the lighter 3-file spine.
+5. **beads deferred.** `task_plan.md` checkboxes are enough for v1-sized plans (10-20
+   tasks). Adopt `beads-workflow` only if dependency ordering becomes a real pain —
+   not before (YAGNI).
+6. **Graduation gate never auto-approves.** It assembles the review surface (plan
+   completion, CI, commits, a checklist) and hands it to Gabriel. The "is it usable /
+   do I understand it by reading" judgement stays human — that is the comprehension-debt
+   control, and it is the same rule as reading a PR.
+7. **Human confirm between planning steps 1-4.** These are cheap tokens and decide
+   quality; the human gates each artifact (IDEA.md, SCOPE.md, task_plan.md) before the
+   unattended loop spends real implementation tokens against it.
+
+## Open questions (to settle with real runs)
+
+- Sentinel robustness: parsing `##ACCEPT##`/`##REJECT##` from agent stdout is fragile
+  across CLIs. May need a structured output file instead.
+- Where forge builds: a `projects/` subdir vs a sibling repo per tool. Leaning sibling
+  repo (each forged tool is its own thing with its own git history).
+- Whether steps 1-4 should also be scriptable end-to-end or stay human-gated prompts.
+  Current bet: keep them human-gated until a real run proves the confirms are noise.

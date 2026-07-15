@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# forge-loop — the autonomous implementation loop (a Ralph loop with a verifier).
+#
+# ONE task per iteration. Fresh agent context each time; state lives on disk
+# (task_plan.md / findings.md / progress.md), never in a long-lived session.
+#
+# The single reason this exists instead of the plain Ralph one-liner:
+#   implementer and verifier are DIFFERENT invocations. The implementer never
+#   grades its own homework — a separate checker, default stance REJECT, gates
+#   every task. That split is what turns "compiles" into "actually works", which
+#   is the whole point (make-it-work quality, not a raw prototype).
+#
+# Quality comes from FOUR backpressure layers, not from the prompt:
+#   1. AGENTS.md in the project   — direction the implementer must follow
+#   2. the project's bin/ci       — deterministic gate (tests/lint/build)
+#   3. the verifier agent         — semantic gate (did it do the task? stubs?)
+#   4. the per-task retry cap      — bounded fix loop, then escalate to a human
+#
+# Everything is pluggable via env so forge is agent-CLI-agnostic. See README.
+
+set -euo pipefail
+
+# ---- configuration (override via env) --------------------------------------
+
+PROJECT_DIR="$(realpath "${1:-$(pwd)}")"
+FORGE_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# How to invoke a coding agent non-interactively. It runs with the project dir
+# as CWD, reads the prompt from stdin, and has filesystem+tool access so it can
+# read task_plan.md itself (we do NOT re-embed files every turn — cheaper stack).
+# Default targets Claude Code print-mode; swap for `opencode run`, etc.
+FORGE_AGENT_CMD="${FORGE_AGENT_CMD:-claude -p --dangerously-skip-permissions}"
+
+# Optional sandbox wrapper (e.g. ai-jail) prefixed to every agent call. An
+# unattended agent that can rm -rf your home is a bad night; wrap it. Empty = off.
+FORGE_SANDBOX="${FORGE_SANDBOX:-}"
+
+FORGE_MAX_LOOPS="${FORGE_MAX_LOOPS:-40}"      # global iteration ceiling
+FORGE_MAX_RETRIES="${FORGE_MAX_RETRIES:-3}"   # verifier rejects per task before escalate
+
+RUN_DIR="${PROJECT_DIR}/.forge"
+LOG="${RUN_DIR}/forge.log"
+mkdir -p "$RUN_DIR"
+
+# ---- helpers ----------------------------------------------------------------
+
+log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
+
+# Run the agent with the given prompt (on stdin). Captures output to a file and
+# echoes it so callers can grep for sentinels.
+run_agent() {
+  local prompt="$1" outfile="$2"
+  # Word-splitting of the sandbox/agent commands is intentional — they carry args.
+  # shellcheck disable=SC2086
+  ( cd "$PROJECT_DIR" && echo "$prompt" | $FORGE_SANDBOX $FORGE_AGENT_CMD ) \
+    > "$outfile" 2>&1 || true
+  cat "$outfile" >> "$LOG"
+}
+
+tasks_remaining() { grep -cE '^\s*-?\s*\[ \]' "$PROJECT_DIR/task_plan.md" 2>/dev/null || echo 0; }
+
+escalate() {
+  local reason="$1"
+  log "STUCK — $reason"
+  { echo "# forge escalation"; echo; echo "**Reason:** $reason"; echo;
+    echo "See task_plan.md / progress.md / .forge/forge.log."; } > "$RUN_DIR/STUCK.md"
+  echo "STUCK" > "$RUN_DIR/sentinel"
+  exit 1
+}
+
+# ---- prompts ----------------------------------------------------------------
+
+IMPLEMENT_PROMPT="$(cat "$FORGE_HOME/prompts/implement.md")"
+VERIFY_PROMPT="$(cat "$FORGE_HOME/prompts/verify.md")"
+
+# ---- preflight --------------------------------------------------------------
+
+[[ -f "$PROJECT_DIR/task_plan.md" ]] || escalate "no task_plan.md in $PROJECT_DIR"
+[[ -f "$PROJECT_DIR/AGENTS.md" ]] || log "WARN: no AGENTS.md — implementer has no direction; quality will suffer"
+command -v git >/dev/null && [[ -d "$PROJECT_DIR/.git" ]] || escalate "project must be a git repo (per-task commits are the review surface)"
+
+log "forge-loop starting in $PROJECT_DIR"
+log "agent: $FORGE_AGENT_CMD  sandbox: ${FORGE_SANDBOX:-none}  max_loops: $FORGE_MAX_LOOPS  retries/task: $FORGE_MAX_RETRIES"
+
+# ---- the loop ---------------------------------------------------------------
+
+loop=0
+while (( loop < FORGE_MAX_LOOPS )); do
+  (( ++loop ))
+  remaining="$(tasks_remaining)"
+  log "=== iteration $loop — $remaining task(s) left ==="
+  (( remaining == 0 )) && { log "DONE — no [ ] tasks remain"; echo "DONE" > "$RUN_DIR/sentinel"; break; }
+
+  iter="$RUN_DIR/iter-$loop"
+
+  # 1) IMPLEMENT one task, with a bounded verifier-driven retry cycle.
+  attempt=0 accepted=0 feedback=""
+  while (( attempt < FORGE_MAX_RETRIES )); do
+    (( ++attempt ))
+    log "  implement (attempt $attempt/$FORGE_MAX_RETRIES)"
+    run_agent "${IMPLEMENT_PROMPT}${feedback:+
+
+## Reviewer rejected the previous attempt — address this specifically:
+$feedback}" "${iter}-impl-$attempt.out"
+
+    # 2) Deterministic gate: the project's own CI, if it has one.
+    if [[ -x "$PROJECT_DIR/bin/ci" ]]; then
+      log "  bin/ci"
+      if ! ( cd "$PROJECT_DIR" && ./bin/ci ) >"${iter}-ci-$attempt.out" 2>&1; then
+        feedback="bin/ci failed:
+$(tail -n 30 "${iter}-ci-$attempt.out")"
+        log "  bin/ci FAILED — feeding back"
+        continue
+      fi
+    fi
+
+    # 3) Semantic gate: a FRESH agent whose default answer is REJECT.
+    log "  verify"
+    run_agent "$VERIFY_PROMPT" "${iter}-verify-$attempt.out"
+    if grep -qx '##ACCEPT##' "${iter}-verify-$attempt.out"; then
+      accepted=1; break
+    fi
+    feedback="$(sed -n 's/^##REJECT##[: ]*//p;/^##REJECT##/,$p' "${iter}-verify-$attempt.out" | tail -n 40)"
+    log "  verifier REJECTED — retrying with feedback"
+  done
+
+  (( accepted == 1 )) || escalate "task failed verification after $FORGE_MAX_RETRIES attempts (iteration $loop)"
+
+  # 4) Commit the accepted task — this diff is the human's review surface later.
+  ( cd "$PROJECT_DIR" && git add -A && \
+    git commit -q -m "forge: iteration $loop" --no-verify ) || log "  (nothing to commit)"
+  log "  task accepted + committed"
+
+  # Guard against a stuck plan: agent claimed progress but no checkbox moved.
+  (( "$(tasks_remaining)" < remaining )) || escalate "no task_plan.md checkbox advanced in iteration $loop (loop would spin)"
+done
+
+(( loop >= FORGE_MAX_LOOPS )) && escalate "hit FORGE_MAX_LOOPS ($FORGE_MAX_LOOPS)"
+
+log "forge-loop finished — run 'bin/forge graduate $PROJECT_DIR' for the review gate"
