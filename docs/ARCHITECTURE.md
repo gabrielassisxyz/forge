@@ -85,3 +85,10 @@ State spine = planning-with-files' three files: `task_plan.md` (plan+checkboxes)
   repo (each forged tool is its own thing with its own git history).
 - Whether steps 1-4 should also be scriptable end-to-end or stay human-gated prompts.
   Current bet: keep them human-gated until a real run proves the confirms are noise.
+- **Skill routing for the autonomous implementer.** The loop's implementer currently
+  has whatever skills its agent auto-discovers — nothing routes the *right* skill to a
+  task. This matters most for **frontend work**, where a UI skill (design system, layout,
+  component patterns) is the difference between usable and ugly. Open: does the plan-
+  breakdown step tag tasks with the skill they need, and `forge-loop` pass `--skill` to
+  the implementer? Pairs with the default visual-identity idea parked in llm-workflow
+  IDEAS.md — a forged frontend should inherit Gabriel's taste, not reinvent it each run.
