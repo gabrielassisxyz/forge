@@ -60,7 +60,8 @@ forge graduate .                       # → GRADUATION.md — read it, run the 
 
 | env | default | meaning |
 |---|---|---|
-| `FORGE_AGENT_CMD` | `claude -p --dangerously-skip-permissions` | non-interactive agent invocation (reads prompt on stdin, CWD = project) |
+| `FORGE_AGENT_CMD` | `claude -p --dangerously-skip-permissions` | **implementer** invocation — non-interactive, reads prompt on stdin, CWD = project |
+| `FORGE_VERIFY_CMD` | *(= `FORGE_AGENT_CMD`)* | **verifier** invocation — set to a *different, stronger* model for a real maker/checker split (e.g. implement with Kimi via `pi`, verify with Opus via `claude`) |
 | `FORGE_SANDBOX` | *(empty)* | wrapper prefixed to every agent call, e.g. `ai-jail`. **Strongly recommended** for unattended runs. |
 | `FORGE_MAX_LOOPS` | `40` | global iteration ceiling |
 | `FORGE_MAX_RETRIES` | `3` | verifier rejections per task before escalating |

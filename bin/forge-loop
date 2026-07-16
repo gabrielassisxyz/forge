@@ -28,8 +28,14 @@ FORGE_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # How to invoke a coding agent non-interactively. It runs with the project dir
 # as CWD, reads the prompt from stdin, and has filesystem+tool access so it can
 # read task_plan.md itself (we do NOT re-embed files every turn — cheaper stack).
-# Default targets Claude Code print-mode; swap for `opencode run`, etc.
+# Default targets Claude Code print-mode; swap for `opencode run`, `pi ...`, etc.
 FORGE_AGENT_CMD="${FORGE_AGENT_CMD:-claude -p --dangerously-skip-permissions}"
+
+# The VERIFIER's command — deliberately separable so a different (stronger) model
+# can grade the implementer's work. This is the maker/checker split at the CLI:
+# e.g. implement with Kimi via pi, verify with Opus via claude. Defaults to the
+# same command (single-agent mode) if you don't set it.
+FORGE_VERIFY_CMD="${FORGE_VERIFY_CMD:-$FORGE_AGENT_CMD}"
 
 # Optional sandbox wrapper (e.g. ai-jail) prefixed to every agent call. An
 # unattended agent that can rm -rf your home is a bad night; wrap it. Empty = off.
@@ -49,10 +55,10 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 # Run the agent with the given prompt (on stdin). Captures output to a file and
 # echoes it so callers can grep for sentinels.
 run_agent() {
-  local prompt="$1" outfile="$2"
+  local cmd="$1" prompt="$2" outfile="$3"
   # Word-splitting of the sandbox/agent commands is intentional — they carry args.
   # shellcheck disable=SC2086
-  ( cd "$PROJECT_DIR" && echo "$prompt" | $FORGE_SANDBOX $FORGE_AGENT_CMD ) \
+  ( cd "$PROJECT_DIR" && echo "$prompt" | $FORGE_SANDBOX $cmd ) \
     > "$outfile" 2>&1 || true
   cat "$outfile" >> "$LOG"
 }
@@ -80,7 +86,9 @@ VERIFY_PROMPT="$(cat "$FORGE_HOME/prompts/verify.md")"
 command -v git >/dev/null && [[ -d "$PROJECT_DIR/.git" ]] || escalate "project must be a git repo (per-task commits are the review surface)"
 
 log "forge-loop starting in $PROJECT_DIR"
-log "agent: $FORGE_AGENT_CMD  sandbox: ${FORGE_SANDBOX:-none}  max_loops: $FORGE_MAX_LOOPS  retries/task: $FORGE_MAX_RETRIES"
+log "implement: $FORGE_AGENT_CMD"
+log "verify:    $FORGE_VERIFY_CMD"
+log "sandbox: ${FORGE_SANDBOX:-none}  max_loops: $FORGE_MAX_LOOPS  retries/task: $FORGE_MAX_RETRIES"
 
 # ---- the loop ---------------------------------------------------------------
 
@@ -98,7 +106,7 @@ while (( loop < FORGE_MAX_LOOPS )); do
   while (( attempt < FORGE_MAX_RETRIES )); do
     (( ++attempt ))
     log "  implement (attempt $attempt/$FORGE_MAX_RETRIES)"
-    run_agent "${IMPLEMENT_PROMPT}${feedback:+
+    run_agent "$FORGE_AGENT_CMD" "${IMPLEMENT_PROMPT}${feedback:+
 
 ## Reviewer rejected the previous attempt — address this specifically:
 $feedback}" "${iter}-impl-$attempt.out"
@@ -116,7 +124,7 @@ $(tail -n 30 "${iter}-ci-$attempt.out")"
 
     # 3) Semantic gate: a FRESH agent whose default answer is REJECT.
     log "  verify"
-    run_agent "$VERIFY_PROMPT" "${iter}-verify-$attempt.out"
+    run_agent "$FORGE_VERIFY_CMD" "$VERIFY_PROMPT" "${iter}-verify-$attempt.out"
     if grep -qx '##ACCEPT##' "${iter}-verify-$attempt.out"; then
       accepted=1; break
     fi
