@@ -36,8 +36,8 @@ FORGE_AGENT_CMD="${FORGE_AGENT_CMD:-pi -p -a --model litellm/kimi-k2.7}"
 
 # VERIFIER — deliberately separable so a STRONGER model grades the implementer's
 # work (the maker/checker split at the CLI, per the anti-slop rationale). Default:
-# Opus via Claude Code. Pin the exact build with `--model claude-opus-4-8` if you
-# want reproducible reviews. Set equal to FORGE_AGENT_CMD for single-agent mode.
+# Opus via Claude Code. Pin a specific model build (`--model <id>`) if you want
+# reproducible reviews. Set equal to FORGE_AGENT_CMD for single-agent mode.
 FORGE_VERIFY_CMD="${FORGE_VERIFY_CMD:-claude -p --model opus --dangerously-skip-permissions}"
 
 # PLAN model — used once to derive task_plan.md from SCOPE.md when no plan exists yet

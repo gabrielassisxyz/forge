@@ -69,7 +69,7 @@ so a normal run needs no env at all. Override only to change the setup.
 | env | default | meaning |
 |---|---|---|
 | `FORGE_AGENT_CMD` | `pi -p -a --model litellm/kimi-k2.7` | **implementer** — cheaper/faster model, prompt passed as the last arg, CWD = project. Code-tuned variant: `--model openrouter/moonshotai/kimi-k2.7-code`. |
-| `FORGE_VERIFY_CMD` | `claude -p --model opus --dangerously-skip-permissions` | **verifier** — the *stronger* model grades the implementer (maker/checker split). Pin with `--model claude-opus-4-8` for reproducible reviews. |
+| `FORGE_VERIFY_CMD` | `claude -p --model opus --dangerously-skip-permissions` | **verifier** — the *stronger* model grades the implementer (maker/checker split). Pin a specific model build for reproducible reviews. |
 | `FORGE_PLAN_REVIEW_CMD` | `codex exec --dangerously-bypass-approvals-and-sandbox` | **second opinion on the task cut** (not per dev task) — an independent model reviews `task_plan.md` against SCOPE and improves it in place before the dev loop. Set empty to disable. |
 | `FORGE_PLAN_CMD` | *(= `FORGE_VERIFY_CMD`)* | model that derives `task_plan.md` from `SCOPE.md` when no plan exists (planning is cheap + high-leverage → the strong model). |
 | `FORGE_SANDBOX` | *(empty)* | wrapper prefixed to every agent call, e.g. `ai-jail`. **Strongly recommended** for unattended runs. |
@@ -80,9 +80,13 @@ so a normal run needs no env at all. Override only to change the setup.
 
 ## Status
 
-v0 — the loop, verifier, prompts, templates, and graduation gate exist and the
-scripts are shellcheck-clean. Not yet run end-to-end on a real project; that is the
-next step (there are several candidate tools to forge and iterate on). Expect the
-prompts and the sentinel contract to move as real runs teach us what breaks.
+v0, and honest about it. The pipeline runs end-to-end (validated with a fake-agent
+test harness and two real greenfield runs). Those runs shook out a pile of real bugs —
+now fixed — around timeouts, run-state placement, checkbox integrity, and logging;
+`docs/ARCHITECTURE.md` records them under "First real run". The **known open gap is UI
+quality**: the atomized dev loop builds functional-but-bland frontends (see the same
+doc). Expect the prompts and the sentinel contract to keep moving as real runs teach us
+what breaks. This is a personal tool published as a reference — defaults target one
+person's stack; override via env.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and the decisions.
