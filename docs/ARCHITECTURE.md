@@ -98,3 +98,22 @@ State spine = planning-with-files' three files: `task_plan.md` (plan+checkboxes)
   breakdown step tag tasks with the skill they need, and `forge-loop` pass `--skill` to
   the implementer? Pairs with the default visual-identity idea parked in llm-workflow
   IDEAS.md — a forged frontend should inherit Gabriel's taste, not reinvent it each run.
+
+## First real run — what broke (hardware-usage, 2026-07-16)
+
+Three bugs the first live run exposed, all now fixed. Kept here so they aren't relearned.
+
+1. **No per-call timeout → a slow/stalled agent invocation blocked forever.** A Kimi
+   call sat with the connection open, zero output, ~30 min. `run_agent` now wraps the
+   agent in `timeout -k 10 $FORGE_AGENT_TIMEOUT` (600s); a timed-out call is a failed
+   attempt and the retry continues from partial on-disk work.
+2. **Run state lived inside the repo the agent edits → the agent deleted it.** The
+   implementer ran `git clean -fdx` to reset Go build artifacts, wiping the in-repo
+   `.forge/` (the loop's own log/state) and crashing the run. State moved to
+   `~/.local/state/forge/<project>/`; `log()` is now non-fatal too.
+3. **A fixed timeout fights genuinely heavy tasks.** The docker-collector task bundled
+   *add dependency + interface + implement + test* — many slow round-trips plus a large
+   `go mod tidy` — and overran 600s repeatedly. The durable fix is **smaller atomic
+   tasks at plan-breakdown**, not a bigger timeout (a bigger timeout just lets a real
+   hang waste more). Open follow-up: teach plan-breakdown to keep a task inside one
+   agent-call budget.
