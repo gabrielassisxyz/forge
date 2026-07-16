@@ -6,7 +6,7 @@ approved architecture / the HOW) + `SCOPE.md` (the v1 must-haves / the WHAT) +
 job is to atomize that approved design into tasks. If `PLAN.md` is absent (older
 project), fall back to deriving the approach from `SCOPE.md`.
 
-**Language:** talk to Gabriel in the chat in Brazilian Portuguese (pt-BR); write
+**Language:** reply to the user in whatever language they write to you; write
 all file content (task_plan.md / findings.md / progress.md) in English.
 
 Turn the v1 must-haves into ATOMIC tasks. Err on the side of MORE, SMALLER tasks — a

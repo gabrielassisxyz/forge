@@ -63,8 +63,8 @@ forge graduate .                       # → GRADUATION.md — read it, run the 
 
 `forge-loop` shells out to whatever coding agent you point it at:
 
-Defaults are baked in for Gabriel's stack — implement with Kimi, verify with Opus —
-so a normal run needs no env at all. Override only to change the setup.
+The defaults implement with Kimi and verify with Opus — a normal run needs no env at
+all. Override any of them to change the setup.
 
 | env | default | meaning |
 |---|---|---|

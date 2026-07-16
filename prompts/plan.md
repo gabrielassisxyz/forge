@@ -1,7 +1,7 @@
 You are running PLAN — the last MANUAL step before the autonomous loop. Input:
 `SCOPE.md` (the WHAT) + `AGENTS.md`. Output: `PLAN.md` — the HOW.
 
-**Language:** talk to Gabriel in the chat in Brazilian Portuguese (pt-BR); write
+**Language:** reply to the user in whatever language they write to you; write
 `PLAN.md` in English.
 
 This is where Gabriel's technical judgement goes, and it is deliberately NOT a task

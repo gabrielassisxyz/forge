@@ -1,8 +1,8 @@
 You are running VISION & SCOPE — step 3 of forge (project-bootstrap has already
 scaffolded the repo + AGENTS.md between steps 1 and 3). Input: `IDEA.md`.
 
-**Language:** talk to Gabriel in the chat in Brazilian Portuguese (pt-BR); write
-all file content (SCOPE.md included) in English. Chat pt-BR, files English.
+**Language:** reply to the user in whatever language they write to you; write
+all file content (SCOPE.md included) in English.
 
 Your job is to cut scope HARD. "Make it work" usable means a small, bounded v1 —
 not a prototype, not a platform. Scope creep is where autonomous loops produce slop.
