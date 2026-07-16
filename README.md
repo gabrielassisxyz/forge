@@ -13,16 +13,20 @@ Then you refactor toward "right" — you never rebuild from scratch.
 
 ```
 idea (vague, one line)
- 1 interview  → IDEA.md          entry gate: state the WHAT + anti-goal + done-check
- 2 bootstrap  → AGENTS.md, bin/ci, gitleaks     (project-bootstrap skill — real guardrails)
- 3 scope      → SCOPE.md         cut v1 HARD (must-haves only; the rest is out of scope)
- 4 plan       → task_plan.md + findings.md + progress.md   (planning-with-files 3-file spine)
- 5 loop       → forge-loop       one task/iteration: implement → bin/ci → verify → commit
- 7 graduate   → GRADUATION.md    the human gate: usable? comprehension payable by reading?
+ MANUAL (you drive, you gate):
+   1 interview        → IDEA.md    entry gate: WHAT + anti-goal + done-check
+   2 project-bootstrap→ AGENTS.md, bin/ci, gitleaks   (real guardrails)
+   3 scope            → SCOPE.md   cut v1 HARD — THIS is the gate you own
+ AUTONOMOUS (`forge loop .`):
+   4 task cut         → task_plan.md + findings.md + progress.md   (derived from SCOPE)
+   5 review the cut   → an independent model (codex) improves the cut in place
+   6 dev loop         → per task: implement → bin/ci → verify → mark → commit
+ THEN:
+   7 graduate         → GRADUATION.md   the human gate: usable? understandable by reading?
 ```
 
-Steps 1-4 are agent-driven planning with a **human confirm between each** — cheap
-tokens, and where quality is actually decided. Step 5 is the unattended part.
+You gate **SCOPE** (the WHAT); everything after it runs unattended. task_plan is
+derived and second-opinion-reviewed inside the loop — you don't review it by hand.
 
 ## Why not just a plain Ralph loop?
 
@@ -47,10 +51,9 @@ cd ~/repositories/my-tool
 
 forge interview                        # prints the interview prompt → run it → IDEA.md
 # then run the project-bootstrap skill here → AGENTS.md + bin/ci
-forge scope                            # → SCOPE.md
-forge plan                             # → task_plan.md (review it!)
+forge scope                            # → SCOPE.md   ← the last thing you gate by hand
 
-forge loop .                           # autonomous: implement + verify each task
+forge loop .                           # autonomous: cut → review the cut → dev loop
 forge graduate .                       # → GRADUATION.md — read it, run the tool, decide
 ```
 

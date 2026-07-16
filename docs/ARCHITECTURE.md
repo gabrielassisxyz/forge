@@ -94,10 +94,12 @@ State spine = planning-with-files' three files: `task_plan.md` (plan+checkboxes)
    check (empty diff → escalate, never a silent march). This is the checkbox-model
    answer to the integrity problem; **if it still frays, decision #5 (beads) is the
    next step** — a tracker whose `close` binds to verifier ACCEPT.
-9. **Two-reviewer gate, second opinion configurable.** After the primary verifier
-   accepts, an independent model (`FORGE_VERIFY2_CMD`, default `codex`) must also
-   accept; either rejection retries. One reviewer's blind spot shouldn't ship. Cost:
-   more rejections → more retries → the retry cap and small tasks matter more.
+9. **Second opinion on the CUT, not on each dev task.** The independent review
+   (`FORGE_PLAN_REVIEW_CMD`, default `codex`) runs once, on the derived `task_plan.md`,
+   improving it in place before the dev loop. This is the high-leverage place for a
+   fresh perspective: a better cut prevents dozens of bad iterations, whereas reviewing
+   every dev task was both the wrong leverage point and a per-iteration tax. The dev
+   loop keeps a single primary verifier.
 
 ## Open questions (to settle with real runs)
 
