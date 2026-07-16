@@ -117,3 +117,24 @@ Three bugs the first live run exposed, all now fixed. Kept here so they aren't r
    tasks at plan-breakdown**, not a bigger timeout (a bigger timeout just lets a real
    hang waste more). Open follow-up: teach plan-breakdown to keep a task inside one
    agent-call budget.
+4. **Frontend work fails blind — and this is the biggest gap.** The implementer coded
+   the process-monitor UI against Node string-tests with no way to render the page, so
+   it shipped code that passed tests but was broken in the browser: a sort control that
+   reverts every SSE tick (state not persisted), confirm buttons with no CSS rule to
+   reveal them (unclickable → no POST). The verifier (Opus) caught all of it and blocked
+   after 3 attempts — a strong win for maker/checker — but the implementer *could not
+   fix it* because it can't see a rendered page. **This is the frontend skill-routing +
+   "render and observe" gap made concrete:** a forged frontend needs a UI skill AND a
+   verify step that actually drives the browser, not just string assertions. Until then,
+   frontend tasks escalate here and a human finishes them (the verifier's rejections are
+   precise fix-specs, so the handoff is cheap).
+5. **Two loop-integrity bugs (both fixed).** (a) A timed-out attempt fell through to
+   ci/verify; the partial work compiled and the verifier ACCEPTED incomplete code, then
+   the checkbox guard escalated — a timeout now short-circuits straight to retry. (b) The
+   implementer marks a task `[x]` optimistically; when the verifier then rejected it, the
+   mark stuck and the plan claimed a broken task was done — `escalate()` now reverts
+   `task_plan.md` to the last committed state. **The deeper cause:** a `[x]` checkbox is
+   trusted state that only the verifier should be allowed to set. This is the strongest
+   argument yet for revisiting the **beads deferral** (decision #5) — a real tracker
+   closes a task explicitly, which could be bound to verifier ACCEPT instead of the
+   implementer's self-report.
