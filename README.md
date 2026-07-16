@@ -58,10 +58,13 @@ forge graduate .                       # → GRADUATION.md — read it, run the 
 
 `forge-loop` shells out to whatever coding agent you point it at:
 
+Defaults are baked in for Gabriel's stack — implement with Kimi, verify with Opus —
+so a normal run needs no env at all. Override only to change the setup.
+
 | env | default | meaning |
 |---|---|---|
-| `FORGE_AGENT_CMD` | `claude -p --dangerously-skip-permissions` | **implementer** invocation — non-interactive, reads prompt on stdin, CWD = project |
-| `FORGE_VERIFY_CMD` | *(= `FORGE_AGENT_CMD`)* | **verifier** invocation — set to a *different, stronger* model for a real maker/checker split (e.g. implement with Kimi via `pi`, verify with Opus via `claude`) |
+| `FORGE_AGENT_CMD` | `pi -p -a --model litellm/kimi-k2.7` | **implementer** — cheaper/faster model, prompt passed as the last arg, CWD = project. Code-tuned variant: `--model openrouter/moonshotai/kimi-k2.7-code`. |
+| `FORGE_VERIFY_CMD` | `claude -p --model opus --dangerously-skip-permissions` | **verifier** — the *stronger* model grades the implementer (maker/checker split). Pin with `--model claude-opus-4-8` for reproducible reviews. |
 | `FORGE_SANDBOX` | *(empty)* | wrapper prefixed to every agent call, e.g. `ai-jail`. **Strongly recommended** for unattended runs. |
 | `FORGE_MAX_LOOPS` | `40` | global iteration ceiling |
 | `FORGE_MAX_RETRIES` | `3` | verifier rejections per task before escalating |
