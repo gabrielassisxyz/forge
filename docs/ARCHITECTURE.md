@@ -49,7 +49,13 @@ the checker is a *fresh* invocation reading the diff, told to find reasons to re
 5. Accept → `git commit` the task (each task is one commit = the review surface).
 6. Guard: if no checkbox advanced, escalate rather than spin.
 7. Cap hit (`FORGE_MAX_RETRIES` per task, `FORGE_MAX_LOOPS` global) → write `STUCK.md`,
-   exit non-zero. A human picks up with full context in `.forge/` + `progress.md`.
+   exit non-zero. A human picks up with full context in the run-state dir
+   (`~/.local/state/forge/<project>/`, override `FORGE_STATE_HOME`) + `progress.md`.
+
+**Run state lives OUTSIDE the project tree** — the implementer runs `git clean -fdx`
+/ `go clean` to reset build artifacts, which deletes an in-repo state dir mid-run and
+takes the loop's own log with it (it did, on the first real run). Keeping state in
+`~/.local/state/forge/<project>/` also stops it polluting the tool's git history.
 
 State spine = planning-with-files' three files: `task_plan.md` (plan+checkboxes),
 `findings.md` (durable decisions/discoveries), `progress.md` (trajectory log).

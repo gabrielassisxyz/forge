@@ -54,19 +54,27 @@ FORGE_MAX_RETRIES="${FORGE_MAX_RETRIES:-3}"   # verifier rejects per task before
 # Tasks average a few minutes, so 600s is generous headroom, not a tight leash.
 FORGE_AGENT_TIMEOUT="${FORGE_AGENT_TIMEOUT:-600}"
 
-RUN_DIR="${PROJECT_DIR}/.forge"
+# Run state lives OUTSIDE the project — the implementer modifies the repo (and will
+# run `git clean -fdx` / `go clean` to reset build artifacts), which would delete an
+# in-repo `.forge/` mid-run and take the loop's own log/state with it (it did). Keeping
+# state out of the tree also stops it polluting the tool's git history. Override with
+# FORGE_STATE_HOME. Keyed by project basename.
+RUN_DIR="${FORGE_STATE_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/forge}/$(basename "$PROJECT_DIR")"
 LOG="${RUN_DIR}/forge.log"
 mkdir -p "$RUN_DIR"
 
 # ---- helpers ----------------------------------------------------------------
 
-log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
+# Never let a logging failure abort the run (set -e): recreate the dir defensively
+# and swallow any error — a lost log line must not kill an in-flight build.
+log() { mkdir -p "$RUN_DIR" 2>/dev/null; { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; } || true; }
 
 # Run the agent with the given prompt as its trailing argument (portable across
 # pi/claude/opencode — stdin is not universally read in print mode). Captures
 # output to a file and echoes it so callers can grep for sentinels.
 run_agent() {
   local cmd="$1" prompt="$2" outfile="$3" rc=0
+  mkdir -p "$(dirname "$outfile")"   # state lives outside the repo, but be defensive
   # `timeout -k 10` sends SIGTERM at the ceiling, then SIGKILL 10s later if it clings.
   # Word-splitting of the sandbox/agent commands is intentional — they carry args.
   # The prompt stays quoted so it is a single argument.
