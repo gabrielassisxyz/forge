@@ -79,9 +79,25 @@ State spine = planning-with-files' three files: `task_plan.md` (plan+checkboxes)
    completion, CI, commits, a checklist) and hands it to Gabriel. The "is it usable /
    do I understand it by reading" judgement stays human — that is the comprehension-debt
    control, and it is the same rule as reading a PR.
-7. **Human confirm between planning steps 1-4.** These are cheap tokens and decide
-   quality; the human gates each artifact (IDEA.md, SCOPE.md, task_plan.md) before the
-   unattended loop spends real implementation tokens against it.
+7. **Human gates SCOPE, not the plan.** Originally the human confirmed IDEA/SCOPE/
+   task_plan. In practice Gabriel reviews SCOPE (the WHAT) but never task_plan (a
+   derivation), so plan-breakdown is folded into the loop: `forge loop` generates
+   task_plan.md from SCOPE.md if absent (`FORGE_PLAN_CMD`, the strong model — planning
+   is cheap and high-leverage) and runs. Consequence: **plan quality now rests entirely
+   on the plan-breakdown prompt**, since no human catches a bad plan — hence the push
+   there for small, atomic, single-budget tasks.
+8. **The loop owns the checkbox, not the implementer.** A `[x]` is trusted control
+   state, and the implementer's self-report proved unreliable both ways — optimistic
+   (marked before the verifier rejected) and forgetful (did work, didn't mark → false
+   "no progress" escalation). So the implementer never edits task_plan.md; the loop
+   marks the first unchecked task only after acceptance, gated by a real code-change
+   check (empty diff → escalate, never a silent march). This is the checkbox-model
+   answer to the integrity problem; **if it still frays, decision #5 (beads) is the
+   next step** — a tracker whose `close` binds to verifier ACCEPT.
+9. **Two-reviewer gate, second opinion configurable.** After the primary verifier
+   accepts, an independent model (`FORGE_VERIFY2_CMD`, default `codex`) must also
+   accept; either rejection retries. One reviewer's blind spot shouldn't ship. Cost:
+   more rejections → more retries → the retry cap and small tasks matter more.
 
 ## Open questions (to settle with real runs)
 
