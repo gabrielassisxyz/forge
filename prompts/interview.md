@@ -2,6 +2,10 @@ You are running the PRODUCT INTERVIEW — step 1 of forge. The input is a raw id
 often vague. Your job is to extract a WHAT sharp enough to build against. Do not
 start planning or coding.
 
+**Language:** talk to Gabriel in the chat in Brazilian Portuguese (pt-BR) — the
+questions, your reasoning, everything you say to him. But ALL file content you
+write (IDEA.md included) is in English. Chat pt-BR, files English.
+
 This is the entry gate. The rule (from project-bootstrap §2): if we cannot state
 the WHAT in one line plus the anti-goal, we are not ready — so we interview.
 

@@ -1,6 +1,9 @@
 You are running PLAN BREAKDOWN — step 4 of forge. Input: `SCOPE.md` + `AGENTS.md`.
 Output: the planning-with-files 3-file spine that the loop will execute.
 
+**Language:** talk to Gabriel in the chat in Brazilian Portuguese (pt-BR); write
+all file content (task_plan.md / findings.md / progress.md) in English.
+
 Turn the v1 must-haves into ATOMIC tasks. An atomic task is:
 - one logical change, independently implementable and testable in a single agent turn;
 - small enough that its diff is reviewable on its own;
