@@ -13,20 +13,22 @@ Then you refactor toward "right" — you never rebuild from scratch.
 
 ```
 idea (vague, one line)
- MANUAL (you drive, you gate):
-   1 interview        → IDEA.md    entry gate: WHAT + anti-goal + done-check
+ MANUAL — one guided session via the /forge-new skill (you gate each doc):
+   1 interview        → IDEA.md    WHAT + anti-goal + done-check
    2 project-bootstrap→ AGENTS.md, bin/ci, gitleaks   (real guardrails)
-   3 scope            → SCOPE.md   cut v1 HARD — THIS is the gate you own
- AUTONOMOUS (`forge loop .`):
-   4 task cut         → task_plan.md + findings.md + progress.md   (derived from SCOPE)
-   5 review the cut   → an independent model (codex) improves the cut in place
-   6 dev loop         → per task: implement → bin/ci → verify → mark → commit
+   3 scope            → SCOPE.md   cut v1 HARD (the WHAT)
+   4 plan             → PLAN.md    architecture / the HOW — your technical gate
+ AUTONOMOUS — `forge loop .`:
+   5 task cut         → task_plan.md + findings.md + progress.md   (atomizes PLAN)
+   6 review the cut   → an independent model (codex) improves the cut in place
+   7 dev loop         → per task: implement → bin/ci → verify → mark → commit
  THEN:
-   7 graduate         → GRADUATION.md   the human gate: usable? understandable by reading?
+   8 graduate         → GRADUATION.md   the human gate: usable? understandable by reading?
 ```
 
-You gate **SCOPE** (the WHAT); everything after it runs unattended. task_plan is
-derived and second-opinion-reviewed inside the loop — you don't review it by hand.
+You gate the **WHAT** (SCOPE) and the **HOW** (PLAN); everything after runs unattended.
+The task cut is derived from PLAN and second-opinion-reviewed inside the loop — you
+don't review it by hand. Run the whole manual half with **`/forge-new`**.
 
 ## Why not just a plain Ralph loop?
 
