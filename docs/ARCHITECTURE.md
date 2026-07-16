@@ -117,17 +117,20 @@ Three bugs the first live run exposed, all now fixed. Kept here so they aren't r
    tasks at plan-breakdown**, not a bigger timeout (a bigger timeout just lets a real
    hang waste more). Open follow-up: teach plan-breakdown to keep a task inside one
    agent-call budget.
-4. **Frontend work fails blind — and this is the biggest gap.** The implementer coded
-   the process-monitor UI against Node string-tests with no way to render the page, so
-   it shipped code that passed tests but was broken in the browser: a sort control that
-   reverts every SSE tick (state not persisted), confirm buttons with no CSS rule to
-   reveal them (unclickable → no POST). The verifier (Opus) caught all of it and blocked
-   after 3 attempts — a strong win for maker/checker — but the implementer *could not
-   fix it* because it can't see a rendered page. **This is the frontend skill-routing +
-   "render and observe" gap made concrete:** a forged frontend needs a UI skill AND a
-   verify step that actually drives the browser, not just string assertions. Until then,
-   frontend tasks escalate here and a human finishes them (the verifier's rejections are
-   precise fix-specs, so the handoff is cheap).
+4. **The implementer proxied the acceptance check instead of performing it.** It coded
+   the process-monitor UI, made its Node string-tests pass, and called it done — shipping
+   a sort control that reverts every SSE tick and confirm buttons a descendant CSS
+   selector left unclickable. The tempting read was "it can't see the page"; that's
+   **wrong** — it had the same shell the reviewer used and could have run headless
+   Chromium. The reviewer (Opus) caught everything precisely because it *did* render and
+   assert on the computed `display` — same tools, different behavior. (A sibling defect
+   was backend, not frontend: a ~45s freeze from sequential Docker stat fetches the unit
+   tests never timed.) **Root cause: an agent takes the cheapest path that turns a check
+   green, and a string test is cheaper than rendering/measuring.** Fix was a prompt rule
+   (`implement.md` rule 5): PERFORM the task's `done when:` literally — render/drive/
+   measure — never substitute a proxy. Capability was never the lever; instruction was.
+   The skill-routing follow-up (a UI skill + a browser-driving verify step) still helps,
+   but the acute bug was prompting, not tooling.
 5. **Two loop-integrity bugs (both fixed).** (a) A timed-out attempt fell through to
    ci/verify; the partial work compiled and the verifier ACCEPTED incomplete code, then
    the checkbox guard escalated — a timeout now short-circuits straight to retry. (b) The
