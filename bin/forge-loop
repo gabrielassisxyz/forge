@@ -40,6 +40,16 @@ FORGE_AGENT_CMD="${FORGE_AGENT_CMD:-pi -p -a --model litellm/kimi-k2.7}"
 # want reproducible reviews. Set equal to FORGE_AGENT_CMD for single-agent mode.
 FORGE_VERIFY_CMD="${FORGE_VERIFY_CMD:-claude -p --model opus --dangerously-skip-permissions}"
 
+# SECOND-OPINION reviewer — a different model/vendor gives an independent read after
+# the primary verifier accepts, so a single reviewer's blind spot doesn't ship. Both
+# must ACCEPT to pass; either REJECT sends it back. Default: Codex. Set empty to skip.
+FORGE_VERIFY2_CMD="${FORGE_VERIFY2_CMD:-codex exec --dangerously-bypass-approvals-and-sandbox}"
+
+# PLAN model — used once to derive task_plan.md from SCOPE.md when no plan exists yet
+# (Gabriel gates SCOPE, not the plan). Planning is cheap and high-leverage, so it
+# defaults to the STRONGER verifier model, not the fast implementer.
+FORGE_PLAN_CMD="${FORGE_PLAN_CMD:-$FORGE_VERIFY_CMD}"
+
 # Optional sandbox wrapper (e.g. ai-jail) prefixed to every agent call. An
 # unattended agent that can rm -rf your home is a bad night; wrap it. Empty = off.
 FORGE_SANDBOX="${FORGE_SANDBOX:-}"
@@ -92,11 +102,14 @@ run_agent() {
   local cmd="$1" prompt="$2" outfile="$3" phase="${4:-agent}" rc=0 start hb
   mkdir -p "$(dirname "$outfile")"; : > "$outfile"   # defensive; state lives outside the repo
   start=$(date +%s)
-  # Heartbeat: while the call runs, log liveness every FORGE_HEARTBEAT seconds, so a
-  # stall shows up in the log itself instead of needing a by-hand `ps`/`/proc` dig.
+  # Heartbeat: while the call runs, log liveness every FORGE_HEARTBEAT seconds so a
+  # stall shows up in the log instead of a by-hand `ps` dig. Its i/o is pinned to
+  # /dev/null and it writes straight to $LOG — so neither it nor the `sleep` it orphans
+  # when killed can hold the caller's stdout pipe open (that once hung `forge loop | tee`).
   ( while sleep "${FORGE_HEARTBEAT:-60}"; do
-      log "    … still in $phase — $(( $(date +%s) - start ))s, $(wc -c < "$outfile" 2>/dev/null || echo 0)B out"
-    done ) & hb=$!
+      printf '[%s]     … still in %s — %ss, %sB out\n' "$(date '+%H:%M:%S')" "$phase" \
+        "$(( $(date +%s) - start ))" "$(wc -c < "$outfile" 2>/dev/null || echo 0)" >> "$LOG"
+    done ) </dev/null >/dev/null 2>&1 & hb=$!
   # `timeout -k 10` sends SIGTERM at the ceiling, then SIGKILL 10s later if it clings.
   # Word-splitting of the sandbox/agent commands is intentional — they carry args.
   # shellcheck disable=SC2086
@@ -113,6 +126,19 @@ run_agent() {
 # so a naive `|| echo 0` would print "0\n0" and break every arithmetic test that uses
 # it — which misfires precisely when the LAST task completes (remaining hits 0).
 tasks_remaining() { local n; n=$(grep -cE '^\s*-?\s*\[ \]' "$PROJECT_DIR/task_plan.md" 2>/dev/null) || true; echo "${n:-0}"; }
+
+# The LOOP owns the checkbox — it marks a task done only after the reviewers accept,
+# never the implementer (whose self-report was both optimistic AND forgetful in real
+# runs). Marks the FIRST unchecked task, matching what the implementer was told to pick.
+mark_first_task_done() { sed -i '0,/^\([[:space:]]*-\?[[:space:]]*\)\[ \]/s//\1[x]/' "$PROJECT_DIR/task_plan.md"; }
+
+# Did the implementer actually change code this iteration? (tracking files don't count.)
+# An ACCEPT with no code change means the plan is out of sync with the tree or the
+# reviewer rubber-stamped a no-op — either way a human should look, not a silent march.
+has_code_changes() {
+  [[ -n "$(cd "$PROJECT_DIR" && git status --porcelain -- . \
+    ':(exclude)task_plan.md' ':(exclude)progress.md' ':(exclude)findings.md' 2>/dev/null)" ]]
+}
 
 escalate() {
   local reason="$1"
@@ -133,17 +159,31 @@ escalate() {
 
 IMPLEMENT_PROMPT="$(cat "$FORGE_HOME/prompts/implement.md")"
 VERIFY_PROMPT="$(cat "$FORGE_HOME/prompts/verify.md")"
+PLAN_PROMPT="$(cat "$FORGE_HOME/prompts/plan-breakdown.md")"
+
+has_plan() { [[ -f "$PROJECT_DIR/task_plan.md" ]] && grep -qE '^\s*-?\s*\[[ x]\]' "$PROJECT_DIR/task_plan.md"; }
 
 # ---- preflight --------------------------------------------------------------
 
-[[ -f "$PROJECT_DIR/task_plan.md" ]] || escalate "no task_plan.md in $PROJECT_DIR"
 [[ -f "$PROJECT_DIR/AGENTS.md" ]] || log "WARN: no AGENTS.md — implementer has no direction; quality will suffer"
 command -v git >/dev/null && [[ -d "$PROJECT_DIR/.git" ]] || escalate "project must be a git repo (per-task commits are the review surface)"
 
 log "forge-loop starting in $PROJECT_DIR"
 log "implement: $FORGE_AGENT_CMD"
-log "verify:    $FORGE_VERIFY_CMD"
+log "verify:    $FORGE_VERIFY_CMD  +2nd: ${FORGE_VERIFY2_CMD:-off}"
 log "sandbox: ${FORGE_SANDBOX:-none}  max_loops: $FORGE_MAX_LOOPS  retries/task: $FORGE_MAX_RETRIES"
+
+# Fold plan-breakdown in: if there's no plan yet, derive it from SCOPE.md unattended
+# (Gabriel gates SCOPE, not the plan). This is what makes cut→dev→review one command.
+if ! has_plan; then
+  [[ -f "$PROJECT_DIR/SCOPE.md" ]] || escalate "no task_plan.md and no SCOPE.md to derive it from — run interview + project-bootstrap + scope first"
+  log "no plan yet — deriving task_plan.md from SCOPE.md (plan model: $FORGE_PLAN_CMD)"
+  run_agent "$FORGE_PLAN_CMD" "$PLAN_PROMPT" "$RUN_DIR/plan.out" "plan"
+  has_plan || escalate "plan-breakdown produced no task_plan.md — see $RUN_DIR/plan.out"
+  ( cd "$PROJECT_DIR" && git add -A && git commit -q -m "forge: plan (task_plan/findings/progress from SCOPE)" --no-verify ) || true
+  log "plan derived — $(tasks_remaining) task(s)"
+  event plan_generated tasks="$(tasks_remaining)"
+fi
 
 # ---- the loop ---------------------------------------------------------------
 
@@ -209,25 +249,47 @@ $(tail -n 30 "${iter}-ci-$attempt.out")"
     if grep -qx '##ACCEPT##' "${iter}-verify-$attempt.out"; then
       log "  verify → ACCEPT (${AGENT_DURATION}s)"
       event verify attempt="$attempt" result=accept dur="$AGENT_DURATION"
+      # Second opinion: an independent reviewer must ALSO accept before we commit.
+      if [[ -n "$FORGE_VERIFY2_CMD" ]]; then
+        log "  second-opinion review"
+        run_agent "$FORGE_VERIFY2_CMD" "$VERIFY_PROMPT" "${iter}-verify2-$attempt.out" "verify2"
+        if grep -qx '##ACCEPT##' "${iter}-verify2-$attempt.out"; then
+          log "  second-opinion → ACCEPT (${AGENT_DURATION}s)"
+          event verify2 attempt="$attempt" result=accept dur="$AGENT_DURATION"
+          accepted=1; break
+        fi
+        feedback="$(sed -n '/##REJECT##/,$ {s/##REJECT##//;p}' "${iter}-verify2-$attempt.out" | tail -n 40)"
+        reject1="$(printf '%s' "$feedback" | grep -m1 -E '[[:alnum:]]' || true)"
+        log "  second-opinion → REJECT (${AGENT_DURATION}s): ${reject1:0:120}"
+        event verify2 attempt="$attempt" result=reject dur="$AGENT_DURATION" reason="${reject1:0:200}"
+        continue
+      fi
       accepted=1; break
     fi
-    feedback="$(sed -n 's/^##REJECT##[: ]*//p;/^##REJECT##/,$p' "${iter}-verify-$attempt.out" | tail -n 40)"
+    feedback="$(sed -n '/##REJECT##/,$ {s/##REJECT##//;p}' "${iter}-verify-$attempt.out" | tail -n 40)"
     # Surface the first concrete reason in the log so "why did it reject?" needs no dig.
-    reject1="$(printf '%s' "$feedback" | grep -m1 -E '[[:alnum:]]')"
+    reject1="$(printf '%s' "$feedback" | grep -m1 -E '[[:alnum:]]' || true)"
     log "  verify → REJECT (${AGENT_DURATION}s): ${reject1:0:120}"
     event verify attempt="$attempt" result=reject dur="$AGENT_DURATION" reason="${reject1:0:200}"
   done
 
   (( accepted == 1 )) || escalate "task failed verification after $FORGE_MAX_RETRIES attempts (iteration $loop)"
 
-  # 4) Commit the accepted task — this diff is the human's review surface later.
+  # 4) Accepted. The implementer must have actually changed code — an empty diff means
+  #    the plan is out of sync with the tree (leftovers from a prior run) or the reviewer
+  #    passed a no-op. Escalate for a human rather than march the plan forward doing nothing.
+  has_code_changes || escalate "reviewers accepted but the implementer changed no code in iteration $loop — plan/tree out of sync, or a no-op. Check whether the task is actually done, mark it, and resume."
+
+  # 5) The LOOP marks the task done (never the implementer) and commits. The per-task
+  #    commit is the human's review surface; task_plan.md's [x] now means verifier-accepted.
+  mark_first_task_done
   ( cd "$PROJECT_DIR" && git add -A && \
     git commit -q -m "forge: iteration $loop" --no-verify ) || log "  (nothing to commit)"
   log "  task accepted + committed"
   event task_committed task="${task:0:200}" attempts="$attempt"
 
-  # Guard against a stuck plan: agent claimed progress but no checkbox moved.
-  (( "$(tasks_remaining)" < remaining )) || escalate "no task_plan.md checkbox advanced in iteration $loop (loop would spin)"
+  # The mark must have advanced the count — a sanity backstop on mark_first_task_done.
+  (( "$(tasks_remaining)" < remaining )) || escalate "task_plan.md checkbox did not advance in iteration $loop (marking failed)"
 done
 
 (( loop >= FORGE_MAX_LOOPS )) && escalate "hit FORGE_MAX_LOOPS ($FORGE_MAX_LOOPS)"

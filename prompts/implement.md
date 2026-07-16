@@ -30,8 +30,9 @@ Rules:
    - "loads in under Ns" / "fast" → measure it, don't assume it.
    A reviewer will render and drive it themselves and reject work that only passed
    string tests. Do the real observation now, while you can still fix what you see.
-6. When the task is genuinely complete, change its `[ ]` to `[x]` in task_plan.md
-   and append one line to progress.md (what you did + how you verified it).
+6. When the task is genuinely complete, append one line to progress.md (what you did +
+   how you verified it). Do NOT edit task_plan.md — the loop marks a task `[x]` only
+   after the reviewers accept it. Your job is to make the work real, not to mark it done.
 7. Record anything a future iteration needs (a decision, a gotcha) in findings.md.
 8. **If the task needs a real decision the plan does NOT cover** — an architectural
    choice, an ambiguous requirement, a trade-off with no obvious answer — do NOT guess
