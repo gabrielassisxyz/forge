@@ -69,28 +69,55 @@ mkdir -p "$RUN_DIR"
 # and swallow any error — a lost log line must not kill an in-flight build.
 log() { mkdir -p "$RUN_DIR" 2>/dev/null; { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; } || true; }
 
+# Machine-readable event stream — one JSON object per line, the spine a future
+# dashboard (live agent stream, stuck-run inspector) reads without parsing prose.
+# event <type> [key=value ...]; values are single-line and minimally escaped.
+EVENTS="${RUN_DIR}/events.jsonl"
+event() {
+  local type="$1"; shift
+  local ts kv="" pair k v
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  for pair in "$@"; do
+    k="${pair%%=*}"; v="${pair#*=}"
+    v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; v="${v//$'\n'/ }"; v="${v//$'\t'/ }"
+    kv+=",\"$k\":\"$v\""
+  done
+  { printf '{"ts":"%s","iteration":%s,"event":"%s"%s}\n' "$ts" "${loop:-0}" "$type" "$kv" >> "$EVENTS"; } 2>/dev/null || true
+}
+
 # Run the agent with the given prompt as its trailing argument (portable across
 # pi/claude/opencode — stdin is not universally read in print mode). Captures
 # output to a file and echoes it so callers can grep for sentinels.
 run_agent() {
-  local cmd="$1" prompt="$2" outfile="$3" rc=0
-  mkdir -p "$(dirname "$outfile")"   # state lives outside the repo, but be defensive
+  local cmd="$1" prompt="$2" outfile="$3" phase="${4:-agent}" rc=0 start hb
+  mkdir -p "$(dirname "$outfile")"; : > "$outfile"   # defensive; state lives outside the repo
+  start=$(date +%s)
+  # Heartbeat: while the call runs, log liveness every FORGE_HEARTBEAT seconds, so a
+  # stall shows up in the log itself instead of needing a by-hand `ps`/`/proc` dig.
+  ( while sleep "${FORGE_HEARTBEAT:-60}"; do
+      log "    … still in $phase — $(( $(date +%s) - start ))s, $(wc -c < "$outfile" 2>/dev/null || echo 0)B out"
+    done ) & hb=$!
   # `timeout -k 10` sends SIGTERM at the ceiling, then SIGKILL 10s later if it clings.
   # Word-splitting of the sandbox/agent commands is intentional — they carry args.
-  # The prompt stays quoted so it is a single argument.
   # shellcheck disable=SC2086
   ( cd "$PROJECT_DIR" && timeout -k 10 "$FORGE_AGENT_TIMEOUT" $FORGE_SANDBOX $cmd "$prompt" ) \
     > "$outfile" 2>&1 || rc=$?
+  kill "$hb" 2>/dev/null || true; wait "$hb" 2>/dev/null || true
+  AGENT_DURATION=$(( $(date +%s) - start ))
   AGENT_TIMED_OUT=$(( rc == 124 ? 1 : 0 ))
   (( AGENT_TIMED_OUT )) && log "  (agent TIMED OUT after ${FORGE_AGENT_TIMEOUT}s — counts as a failed attempt)"
   cat "$outfile" >> "$LOG"
 }
 
-tasks_remaining() { grep -cE '^\s*-?\s*\[ \]' "$PROJECT_DIR/task_plan.md" 2>/dev/null || echo 0; }
+# Always emit exactly one integer. `grep -c` prints "0" AND exits 1 on zero matches,
+# so a naive `|| echo 0` would print "0\n0" and break every arithmetic test that uses
+# it — which misfires precisely when the LAST task completes (remaining hits 0).
+tasks_remaining() { local n; n=$(grep -cE '^\s*-?\s*\[ \]' "$PROJECT_DIR/task_plan.md" 2>/dev/null) || true; echo "${n:-0}"; }
 
 escalate() {
   local reason="$1"
   log "STUCK — $reason"
+  event escalate reason="$reason"
   # Revert optimistic checkbox marks: the implementer may have marked the failed task
   # [x] before the verifier rejected it. Restoring task_plan.md to the last committed
   # state (the last ACCEPTED task) drops those false "done" marks, so the plan never
@@ -125,7 +152,13 @@ while (( loop < FORGE_MAX_LOOPS )); do
   (( ++loop ))
   remaining="$(tasks_remaining)"
   log "=== iteration $loop — $remaining task(s) left ==="
-  (( remaining == 0 )) && { log "DONE — no [ ] tasks remain"; echo "DONE" > "$RUN_DIR/sentinel"; break; }
+  (( remaining == 0 )) && { log "DONE — no [ ] tasks remain"; event finished; echo "DONE" > "$RUN_DIR/sentinel"; break; }
+
+  # The task under work this iteration — logging its text makes the log self-explaining
+  # ("iteration 6" alone told you nothing about WHAT was being built).
+  task="$(grep -m1 -E '^\s*-?\s*\[ \]' "$PROJECT_DIR/task_plan.md" | sed -E 's/^\s*-?\s*\[ \]\s*//')"
+  log "  task: ${task:0:110}"
+  event iteration_start remaining="$remaining" task="${task:0:200}"
 
   iter="$RUN_DIR/iter-$loop"
 
@@ -137,7 +170,9 @@ while (( loop < FORGE_MAX_LOOPS )); do
     run_agent "$FORGE_AGENT_CMD" "${IMPLEMENT_PROMPT}${feedback:+
 
 ## Reviewer rejected the previous attempt — address this specifically:
-$feedback}" "${iter}-impl-$attempt.out"
+$feedback}" "${iter}-impl-$attempt.out" "implement"
+    log "  implement done (${AGENT_DURATION}s)"
+    event implement attempt="$attempt" dur="$AGENT_DURATION" timedout="$AGENT_TIMED_OUT"
 
     # 1a) The implementer hit a decision the plan doesn't cover. Escalate NOW rather
     #     than let it guess — guessing is the comprehension debt we exist to avoid.
@@ -162,18 +197,25 @@ $feedback}" "${iter}-impl-$attempt.out"
         feedback="bin/ci failed:
 $(tail -n 30 "${iter}-ci-$attempt.out")"
         log "  bin/ci FAILED — feeding back"
+        event ci attempt="$attempt" result=fail
         continue
       fi
+      event ci attempt="$attempt" result=pass
     fi
 
     # 3) Semantic gate: a FRESH agent whose default answer is REJECT.
     log "  verify"
-    run_agent "$FORGE_VERIFY_CMD" "$VERIFY_PROMPT" "${iter}-verify-$attempt.out"
+    run_agent "$FORGE_VERIFY_CMD" "$VERIFY_PROMPT" "${iter}-verify-$attempt.out" "verify"
     if grep -qx '##ACCEPT##' "${iter}-verify-$attempt.out"; then
+      log "  verify → ACCEPT (${AGENT_DURATION}s)"
+      event verify attempt="$attempt" result=accept dur="$AGENT_DURATION"
       accepted=1; break
     fi
     feedback="$(sed -n 's/^##REJECT##[: ]*//p;/^##REJECT##/,$p' "${iter}-verify-$attempt.out" | tail -n 40)"
-    log "  verifier REJECTED — retrying with feedback"
+    # Surface the first concrete reason in the log so "why did it reject?" needs no dig.
+    reject1="$(printf '%s' "$feedback" | grep -m1 -E '[[:alnum:]]')"
+    log "  verify → REJECT (${AGENT_DURATION}s): ${reject1:0:120}"
+    event verify attempt="$attempt" result=reject dur="$AGENT_DURATION" reason="${reject1:0:200}"
   done
 
   (( accepted == 1 )) || escalate "task failed verification after $FORGE_MAX_RETRIES attempts (iteration $loop)"
@@ -182,6 +224,7 @@ $(tail -n 30 "${iter}-ci-$attempt.out")"
   ( cd "$PROJECT_DIR" && git add -A && \
     git commit -q -m "forge: iteration $loop" --no-verify ) || log "  (nothing to commit)"
   log "  task accepted + committed"
+  event task_committed task="${task:0:200}" attempts="$attempt"
 
   # Guard against a stuck plan: agent claimed progress but no checkbox moved.
   (( "$(tasks_remaining)" < remaining )) || escalate "no task_plan.md checkbox advanced in iteration $loop (loop would spin)"
