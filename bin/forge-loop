@@ -81,7 +81,8 @@ run_agent() {
   # shellcheck disable=SC2086
   ( cd "$PROJECT_DIR" && timeout -k 10 "$FORGE_AGENT_TIMEOUT" $FORGE_SANDBOX $cmd "$prompt" ) \
     > "$outfile" 2>&1 || rc=$?
-  (( rc == 124 )) && log "  (agent TIMED OUT after ${FORGE_AGENT_TIMEOUT}s — counts as a failed attempt)"
+  AGENT_TIMED_OUT=$(( rc == 124 ? 1 : 0 ))
+  (( AGENT_TIMED_OUT )) && log "  (agent TIMED OUT after ${FORGE_AGENT_TIMEOUT}s — counts as a failed attempt)"
   cat "$outfile" >> "$LOG"
 }
 
@@ -90,8 +91,13 @@ tasks_remaining() { grep -cE '^\s*-?\s*\[ \]' "$PROJECT_DIR/task_plan.md" 2>/dev
 escalate() {
   local reason="$1"
   log "STUCK — $reason"
+  # Revert optimistic checkbox marks: the implementer may have marked the failed task
+  # [x] before the verifier rejected it. Restoring task_plan.md to the last committed
+  # state (the last ACCEPTED task) drops those false "done" marks, so the plan never
+  # claims a rejected task is finished. Accepted marks are already committed, untouched.
+  git -C "$PROJECT_DIR" checkout -- task_plan.md 2>/dev/null || true
   { echo "# forge escalation"; echo; echo "**Reason:** $reason"; echo;
-    echo "See task_plan.md / progress.md / .forge/forge.log."; } > "$RUN_DIR/STUCK.md"
+    echo "See task_plan.md / progress.md / the run log under \$FORGE_STATE_HOME."; } > "$RUN_DIR/STUCK.md"
   echo "STUCK" > "$RUN_DIR/sentinel"
   exit 1
 }
@@ -138,6 +144,15 @@ $feedback}" "${iter}-impl-$attempt.out"
     #     Don't burn the retry budget on a question only the human can answer.
     if grep -qx '##STUCK##' "${iter}-impl-$attempt.out"; then
       escalate "implementer needs a decision the plan doesn't cover (iteration $loop) — see findings.md"
+    fi
+
+    # 1b) Timed out mid-task → straight to retry. A truncated attempt must NOT reach
+    #     ci/verify: the partial work can spuriously compile and a verifier reviewing
+    #     it as a finished submission can wrongly ACCEPT incomplete code (it did).
+    if (( AGENT_TIMED_OUT )); then
+      feedback="Your previous attempt hit the ${FORGE_AGENT_TIMEOUT}s time limit before finishing. The partial work is on disk — CONTINUE and complete the task (do not restart from scratch)."
+      log "  timed out mid-task — retrying (continues the partial work)"
+      continue
     fi
 
     # 2) Deterministic gate: the project's own CI, if it has one.
