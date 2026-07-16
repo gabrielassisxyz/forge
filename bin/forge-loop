@@ -47,6 +47,13 @@ FORGE_SANDBOX="${FORGE_SANDBOX:-}"
 FORGE_MAX_LOOPS="${FORGE_MAX_LOOPS:-40}"      # global iteration ceiling
 FORGE_MAX_RETRIES="${FORGE_MAX_RETRIES:-3}"   # verifier rejects per task before escalate
 
+# Per-agent-call wall-clock ceiling. A model call can stall with the connection
+# open and no tokens arriving (seen with Ollama Cloud) — nothing else times it out,
+# so without this a single hung invocation blocks the loop forever. A timed-out call
+# becomes a failed attempt (partial work stays on disk; the retry continues it).
+# Tasks average a few minutes, so 600s is generous headroom, not a tight leash.
+FORGE_AGENT_TIMEOUT="${FORGE_AGENT_TIMEOUT:-600}"
+
 RUN_DIR="${PROJECT_DIR}/.forge"
 LOG="${RUN_DIR}/forge.log"
 mkdir -p "$RUN_DIR"
@@ -59,12 +66,14 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 # pi/claude/opencode — stdin is not universally read in print mode). Captures
 # output to a file and echoes it so callers can grep for sentinels.
 run_agent() {
-  local cmd="$1" prompt="$2" outfile="$3"
+  local cmd="$1" prompt="$2" outfile="$3" rc=0
+  # `timeout -k 10` sends SIGTERM at the ceiling, then SIGKILL 10s later if it clings.
   # Word-splitting of the sandbox/agent commands is intentional — they carry args.
   # The prompt stays quoted so it is a single argument.
   # shellcheck disable=SC2086
-  ( cd "$PROJECT_DIR" && $FORGE_SANDBOX $cmd "$prompt" ) \
-    > "$outfile" 2>&1 || true
+  ( cd "$PROJECT_DIR" && timeout -k 10 "$FORGE_AGENT_TIMEOUT" $FORGE_SANDBOX $cmd "$prompt" ) \
+    > "$outfile" 2>&1 || rc=$?
+  (( rc == 124 )) && log "  (agent TIMED OUT after ${FORGE_AGENT_TIMEOUT}s — counts as a failed attempt)"
   cat "$outfile" >> "$LOG"
 }
 
