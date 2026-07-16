@@ -1,5 +1,10 @@
-You are running PLAN BREAKDOWN — step 4 of forge. Input: `SCOPE.md` + `AGENTS.md`.
-Output: the planning-with-files 3-file spine that the loop will execute.
+You are running the TASK CUT — the first autonomous step. Input: `PLAN.md` (the
+approved architecture / the HOW) + `SCOPE.md` (the v1 must-haves / the WHAT) +
+`AGENTS.md`. Output: the planning-with-files 3-file spine the loop will execute.
+
+`PLAN.md` already decided the approach — do NOT re-litigate architecture here. Your
+job is to atomize that approved design into tasks. If `PLAN.md` is absent (older
+project), fall back to deriving the approach from `SCOPE.md`.
 
 **Language:** talk to Gabriel in the chat in Brazilian Portuguese (pt-BR); write
 all file content (task_plan.md / findings.md / progress.md) in English.

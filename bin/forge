@@ -23,12 +23,13 @@ usage() {
   cat <<'EOF'
 forge — turn a raw idea into a usable v1 tool, mostly autonomously.
 
-Pipeline (steps 1-4 are human-gated planning; 5 is the unattended loop; 7 is review):
+MANUAL — you gate each (or run the /forge-new skill to do all four in one session):
   1 interview   -> IDEA.md        product interview; the entry gate
   2 bootstrap   -> AGENTS.md, bin/ci, gitleaks   (run the project-bootstrap skill)
-  3 scope       -> SCOPE.md       cut v1 hard
-  4 plan        -> task_plan.md + findings.md + progress.md
-  5 loop        -> forge-loop     implement + verify, one task per iteration
+  3 scope       -> SCOPE.md       cut v1 hard (the WHAT)
+  4 plan        -> PLAN.md        architecture / the HOW — your technical gate
+AUTONOMOUS:
+  5 loop        -> forge-loop     cuts PLAN into tasks, reviews the cut, then builds
   7 graduate    -> GRADUATION.md  the human review gate: is it usable?
 
 Usage: forge <interview|scope|plan|loop|graduate> [project-dir]
@@ -44,7 +45,7 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
   interview) show_prompt interview.md ;;
   scope)     show_prompt vision-scope.md ;;
-  plan)      show_prompt plan-breakdown.md ;;
+  plan)      show_prompt plan.md ;;          # the manual HOW step; the autonomous cut lives in the loop
 
   new)
     name="${1:?forge new <name>}"; dir="$(realpath "$name")"

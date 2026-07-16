@@ -182,7 +182,7 @@ log "sandbox: ${FORGE_SANDBOX:-none}  max_loops: $FORGE_MAX_LOOPS  retries/task:
 # Gabriel gates SCOPE, not the cut — so a reviewed cut is where the leverage is: a
 # better plan prevents dozens of bad dev iterations. This makes cut→review→dev one command.
 if ! has_plan; then
-  [[ -f "$PROJECT_DIR/SCOPE.md" ]] || escalate "no task_plan.md and no SCOPE.md to derive it from — run interview + project-bootstrap + scope first"
+  [[ -f "$PROJECT_DIR/SCOPE.md" ]] || escalate "no task_plan.md and no SCOPE.md to derive it from — run the /forge-new skill first (interview → bootstrap → scope → plan)"
   log "no plan yet — deriving task_plan.md from SCOPE.md (plan model: $FORGE_PLAN_CMD)"
   run_agent "$FORGE_PLAN_CMD" "$PLAN_PROMPT" "$RUN_DIR/plan.out" "plan"
   has_plan || escalate "plan-breakdown produced no task_plan.md — see $RUN_DIR/plan.out"
