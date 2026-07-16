@@ -40,15 +40,17 @@ FORGE_AGENT_CMD="${FORGE_AGENT_CMD:-pi -p -a --model litellm/kimi-k2.7}"
 # want reproducible reviews. Set equal to FORGE_AGENT_CMD for single-agent mode.
 FORGE_VERIFY_CMD="${FORGE_VERIFY_CMD:-claude -p --model opus --dangerously-skip-permissions}"
 
-# SECOND-OPINION reviewer — a different model/vendor gives an independent read after
-# the primary verifier accepts, so a single reviewer's blind spot doesn't ship. Both
-# must ACCEPT to pass; either REJECT sends it back. Default: Codex. Set empty to skip.
-FORGE_VERIFY2_CMD="${FORGE_VERIFY2_CMD:-codex exec --dangerously-bypass-approvals-and-sandbox}"
-
 # PLAN model — used once to derive task_plan.md from SCOPE.md when no plan exists yet
 # (Gabriel gates SCOPE, not the plan). Planning is cheap and high-leverage, so it
 # defaults to the STRONGER verifier model, not the fast implementer.
 FORGE_PLAN_CMD="${FORGE_PLAN_CMD:-$FORGE_VERIFY_CMD}"
+
+# PLAN REVIEWER — a second opinion on the TASK CUT (not on each dev task). After the
+# plan is derived, an independent model reviews it against SCOPE and improves it in
+# place — split oversized tasks, sharpen vague done-whens, fix ordering. This is where
+# a fresh perspective pays off most: a better cut prevents dozens of bad iterations.
+# Default: Codex. Set empty to skip.
+FORGE_PLAN_REVIEW_CMD="${FORGE_PLAN_REVIEW_CMD:-codex exec --dangerously-bypass-approvals-and-sandbox}"
 
 # Optional sandbox wrapper (e.g. ai-jail) prefixed to every agent call. An
 # unattended agent that can rm -rf your home is a bad night; wrap it. Empty = off.
@@ -160,6 +162,7 @@ escalate() {
 IMPLEMENT_PROMPT="$(cat "$FORGE_HOME/prompts/implement.md")"
 VERIFY_PROMPT="$(cat "$FORGE_HOME/prompts/verify.md")"
 PLAN_PROMPT="$(cat "$FORGE_HOME/prompts/plan-breakdown.md")"
+PLAN_REVIEW_PROMPT="$(cat "$FORGE_HOME/prompts/plan-review.md")"
 
 has_plan() { [[ -f "$PROJECT_DIR/task_plan.md" ]] && grep -qE '^\s*-?\s*\[[ x]\]' "$PROJECT_DIR/task_plan.md"; }
 
@@ -170,19 +173,30 @@ command -v git >/dev/null && [[ -d "$PROJECT_DIR/.git" ]] || escalate "project m
 
 log "forge-loop starting in $PROJECT_DIR"
 log "implement: $FORGE_AGENT_CMD"
-log "verify:    $FORGE_VERIFY_CMD  +2nd: ${FORGE_VERIFY2_CMD:-off}"
+log "verify:    $FORGE_VERIFY_CMD"
+log "plan: $FORGE_PLAN_CMD  plan-review: ${FORGE_PLAN_REVIEW_CMD:-off}"
 log "sandbox: ${FORGE_SANDBOX:-none}  max_loops: $FORGE_MAX_LOOPS  retries/task: $FORGE_MAX_RETRIES"
 
-# Fold plan-breakdown in: if there's no plan yet, derive it from SCOPE.md unattended
-# (Gabriel gates SCOPE, not the plan). This is what makes cut→dev→review one command.
+# Fold the task cut in: if there's no plan yet, derive task_plan.md from SCOPE.md, then
+# get an independent second opinion on the CUT (not on each dev task) and fold it in.
+# Gabriel gates SCOPE, not the cut — so a reviewed cut is where the leverage is: a
+# better plan prevents dozens of bad dev iterations. This makes cut→review→dev one command.
 if ! has_plan; then
   [[ -f "$PROJECT_DIR/SCOPE.md" ]] || escalate "no task_plan.md and no SCOPE.md to derive it from — run interview + project-bootstrap + scope first"
   log "no plan yet — deriving task_plan.md from SCOPE.md (plan model: $FORGE_PLAN_CMD)"
   run_agent "$FORGE_PLAN_CMD" "$PLAN_PROMPT" "$RUN_DIR/plan.out" "plan"
   has_plan || escalate "plan-breakdown produced no task_plan.md — see $RUN_DIR/plan.out"
-  ( cd "$PROJECT_DIR" && git add -A && git commit -q -m "forge: plan (task_plan/findings/progress from SCOPE)" --no-verify ) || true
   log "plan derived — $(tasks_remaining) task(s)"
   event plan_generated tasks="$(tasks_remaining)"
+  # Second opinion on the cut: an independent reviewer improves task_plan.md in place.
+  if [[ -n "$FORGE_PLAN_REVIEW_CMD" ]]; then
+    log "reviewing the cut (plan-review: $FORGE_PLAN_REVIEW_CMD)"
+    run_agent "$FORGE_PLAN_REVIEW_CMD" "$PLAN_REVIEW_PROMPT" "$RUN_DIR/plan-review.out" "plan-review"
+    has_plan || escalate "plan-review left no valid task_plan.md — see $RUN_DIR/plan-review.out"
+    log "cut reviewed — $(tasks_remaining) task(s) after review"
+    event plan_reviewed tasks="$(tasks_remaining)"
+  fi
+  ( cd "$PROJECT_DIR" && git add -A && git commit -q -m "forge: plan (task cut from SCOPE, second-opinion reviewed)" --no-verify ) || true
 fi
 
 # ---- the loop ---------------------------------------------------------------
@@ -249,21 +263,6 @@ $(tail -n 30 "${iter}-ci-$attempt.out")"
     if grep -qx '##ACCEPT##' "${iter}-verify-$attempt.out"; then
       log "  verify → ACCEPT (${AGENT_DURATION}s)"
       event verify attempt="$attempt" result=accept dur="$AGENT_DURATION"
-      # Second opinion: an independent reviewer must ALSO accept before we commit.
-      if [[ -n "$FORGE_VERIFY2_CMD" ]]; then
-        log "  second-opinion review"
-        run_agent "$FORGE_VERIFY2_CMD" "$VERIFY_PROMPT" "${iter}-verify2-$attempt.out" "verify2"
-        if grep -qx '##ACCEPT##' "${iter}-verify2-$attempt.out"; then
-          log "  second-opinion → ACCEPT (${AGENT_DURATION}s)"
-          event verify2 attempt="$attempt" result=accept dur="$AGENT_DURATION"
-          accepted=1; break
-        fi
-        feedback="$(sed -n '/##REJECT##/,$ {s/##REJECT##//;p}' "${iter}-verify2-$attempt.out" | tail -n 40)"
-        reject1="$(printf '%s' "$feedback" | grep -m1 -E '[[:alnum:]]' || true)"
-        log "  second-opinion → REJECT (${AGENT_DURATION}s): ${reject1:0:120}"
-        event verify2 attempt="$attempt" result=reject dur="$AGENT_DURATION" reason="${reject1:0:200}"
-        continue
-      fi
       accepted=1; break
     fi
     feedback="$(sed -n '/##REJECT##/,$ {s/##REJECT##//;p}' "${iter}-verify-$attempt.out" | tail -n 40)"

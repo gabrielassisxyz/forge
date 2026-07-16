@@ -65,7 +65,7 @@ so a normal run needs no env at all. Override only to change the setup.
 |---|---|---|
 | `FORGE_AGENT_CMD` | `pi -p -a --model litellm/kimi-k2.7` | **implementer** — cheaper/faster model, prompt passed as the last arg, CWD = project. Code-tuned variant: `--model openrouter/moonshotai/kimi-k2.7-code`. |
 | `FORGE_VERIFY_CMD` | `claude -p --model opus --dangerously-skip-permissions` | **verifier** — the *stronger* model grades the implementer (maker/checker split). Pin with `--model claude-opus-4-8` for reproducible reviews. |
-| `FORGE_VERIFY2_CMD` | `codex exec --dangerously-bypass-approvals-and-sandbox` | **second-opinion reviewer** — an independent model that must ALSO accept before commit. Set empty to disable. |
+| `FORGE_PLAN_REVIEW_CMD` | `codex exec --dangerously-bypass-approvals-and-sandbox` | **second opinion on the task cut** (not per dev task) — an independent model reviews `task_plan.md` against SCOPE and improves it in place before the dev loop. Set empty to disable. |
 | `FORGE_PLAN_CMD` | *(= `FORGE_VERIFY_CMD`)* | model that derives `task_plan.md` from `SCOPE.md` when no plan exists (planning is cheap + high-leverage → the strong model). |
 | `FORGE_SANDBOX` | *(empty)* | wrapper prefixed to every agent call, e.g. `ai-jail`. **Strongly recommended** for unattended runs. |
 | `FORGE_MAX_LOOPS` | `40` | global iteration ceiling |
