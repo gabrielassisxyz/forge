@@ -116,6 +116,13 @@ while (( loop < FORGE_MAX_LOOPS )); do
 ## Reviewer rejected the previous attempt — address this specifically:
 $feedback}" "${iter}-impl-$attempt.out"
 
+    # 1a) The implementer hit a decision the plan doesn't cover. Escalate NOW rather
+    #     than let it guess — guessing is the comprehension debt we exist to avoid.
+    #     Don't burn the retry budget on a question only the human can answer.
+    if grep -qx '##STUCK##' "${iter}-impl-$attempt.out"; then
+      escalate "implementer needs a decision the plan doesn't cover (iteration $loop) — see findings.md"
+    fi
+
     # 2) Deterministic gate: the project's own CI, if it has one.
     if [[ -x "$PROJECT_DIR/bin/ci" ]]; then
       log "  bin/ci"
