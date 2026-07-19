@@ -1,7 +1,6 @@
 # task_plan.md — <project>
 
-> Executable checklist. One atomic task per line. The loop implements the first
-> `[ ]` it finds, top to bottom. Every task carries a `done when:` acceptance check.
+> Executable checklist. One atomic task per line. The loop implements the first `[ ]` it finds, top to bottom. Every task carries a `done when:` acceptance check.
 
 ## Phase 1 — Scaffolding
 - [ ] <task> — done when: <observable check>
