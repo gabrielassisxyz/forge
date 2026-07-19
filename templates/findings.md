@@ -1,7 +1,6 @@
 # findings.md — <project>
 
-> Durable memory across loop iterations. Each fresh agent reads this first.
-> Start with the load-bearing decisions; iterations append discoveries below.
+> Durable memory across loop iterations. Each fresh agent reads this first. Start with the load-bearing decisions; iterations append discoveries below.
 
 ## Decisions (from IDEA.md / SCOPE.md)
 - WHAT:

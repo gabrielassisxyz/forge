@@ -1,13 +1,8 @@
 # forge
 
-Turn a raw idea into a **usable v1 tool**, mostly autonomously — interview →
-plan → autonomous implementation loop with a verifier → a review gate you read.
+Turn a raw idea into a **usable v1 tool**, mostly autonomously — interview → plan → autonomous implementation loop with a verifier → a review gate you read.
 
-Successor to the (never-finished) `idea-to-planning` experiment. The difference
-that matters: forge targets **"make it work" usable quality**, not a raw prototype.
-The autonomous loop does not run blind — it runs inside a harness (AGENTS.md +
-`bin/ci` + a separate verifier agent) that is what turns "compiles" into "works".
-Then you refactor toward "right" — you never rebuild from scratch.
+Successor to the (never-finished) `idea-to-planning` experiment. The difference that matters: forge targets **"make it work" usable quality**, not a raw prototype. The autonomous loop does not run blind — it runs inside a harness (AGENTS.md + `bin/ci` + a separate verifier agent) that is what turns "compiles" into "works". Then you refactor toward "right" — you never rebuild from scratch.
 
 ## The pipeline
 
@@ -26,21 +21,15 @@ idea (vague, one line)
    8 graduate         → GRADUATION.md   the human gate: usable? understandable by reading?
 ```
 
-You gate the **WHAT** (SCOPE) and the **HOW** (PLAN); everything after runs unattended.
-The task cut is derived from PLAN and second-opinion-reviewed inside the loop — you
-don't review it by hand. Run the whole manual half with **`/forge-new`**.
+You gate the **WHAT** (SCOPE) and the **HOW** (PLAN); everything after runs unattended. The task cut is derived from PLAN and second-opinion-reviewed inside the loop — you don't review it by hand. Run the whole manual half with **`/forge-new`**.
 
 ## Why not just a plain Ralph loop?
 
-A raw Ralph loop on a greenfield repo gets ~90% of the way — and the last 10% is
-placeholders, stubs, and "compiles but doesn't work". forge closes that with **four
-backpressure layers**, because the prompt is not what makes code good:
+A raw Ralph loop on a greenfield repo gets ~90% of the way — and the last 10% is placeholders, stubs, and "compiles but doesn't work". forge closes that with **four backpressure layers**, because the prompt is not what makes code good:
 
 1. **AGENTS.md** in the project — the direction the implementer must follow.
 2. **`bin/ci`** — deterministic gate (tests/lint/build) after every task.
-3. **A verifier agent** — a *separate* invocation, default stance REJECT, that reads
-   the diff and asks "did it actually do the task? any stubs?". The implementer never
-   grades its own homework.
+3. **A verifier agent** — a *separate* invocation, default stance REJECT, that reads the diff and asks "did it actually do the task? any stubs?". The implementer never grades its own homework.
 4. **A retry cap** — bounded fix loop per task, then escalate to you with context.
 
 ## Usage
@@ -63,8 +52,7 @@ forge graduate .                       # → GRADUATION.md — read it, run the 
 
 `forge-loop` shells out to whatever coding agent you point it at:
 
-The defaults implement with Kimi and verify with Opus — a normal run needs no env at
-all. Override any of them to change the setup.
+The defaults implement with Kimi and verify with Opus — a normal run needs no env at all. Override any of them to change the setup.
 
 | env | default | meaning |
 |---|---|---|
@@ -80,13 +68,6 @@ all. Override any of them to change the setup.
 
 ## Status
 
-v0, and honest about it. The pipeline runs end-to-end (validated with a fake-agent
-test harness and two real greenfield runs). Those runs shook out a pile of real bugs —
-now fixed — around timeouts, run-state placement, checkbox integrity, and logging;
-`docs/ARCHITECTURE.md` records them under "First real run". The **known open gap is UI
-quality**: the atomized dev loop builds functional-but-bland frontends (see the same
-doc). Expect the prompts and the sentinel contract to keep moving as real runs teach us
-what breaks. This is a personal tool published as a reference — defaults target one
-person's stack; override via env.
+v0, and honest about it. The pipeline runs end-to-end (validated with a fake-agent test harness and two real greenfield runs). Those runs shook out a pile of real bugs — now fixed — around timeouts, run-state placement, checkbox integrity, and logging; `docs/ARCHITECTURE.md` records them under "First real run". The **known open gap is UI quality**: the atomized dev loop builds functional-but-bland frontends (see the same doc). Expect the prompts and the sentinel contract to keep moving as real runs teach us what breaks. This is a personal tool published as a reference — defaults target one person's stack; override via env.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and the decisions.
