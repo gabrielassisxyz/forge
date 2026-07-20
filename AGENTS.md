@@ -13,7 +13,7 @@ Turn an idea into a **usable v1** (make-it-work quality), mostly autonomously, w
 - **Bash-first, KISS.** The whole system is a few shell scripts + prompt files + templates. Resist turning it into a framework — the old idea-to-planning died of over-engineering (a Python processor full of placeholders). Composition over code.
 - **The prompts are the product.** `prompts/*.md` are load-bearing. Change them surgically; a word shift changes agent behavior. Keep them minimal (Ralph/RepoMirror: short prompts beat long ones) but never strip the anti-slop rules from `implement.md` or the REJECT-default from `verify.md`.
 - **The verifier is sacred.** Never let the implementer verify its own work, never remove the retry cap, never default the verifier to ACCEPT. That split is the reason output is usable and not a stub farm.
-- **shellcheck clean.** Run `shellcheck bin/*` before committing script changes.
+- **`bin/ci` green.** Run `bin/ci` (shellcheck over all tracked shell scripts + gitleaks secret scan) before committing; it is the deterministic gate, and it fails loudly if a scanner is missing.
 - **Conventional Commits**, branch before non-trivial work, what+why in the message, no external attribution. English in files.
 
 ## Gotchas
